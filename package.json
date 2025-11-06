@@ -4,14 +4,15 @@
   "description": "Student account deletion mini-project",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "npx vite",
+    "build": "npx vite build",
+    "preview": "npx vite preview"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "devDependencies": {
-    "vite": "^5.4.21"
-  }
+  "dependencies": {
+    "vite": "^5.0.0"
+  },
+  "devDependencies": {}
 }
