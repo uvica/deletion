@@ -20,7 +20,6 @@ if (document.getElementById('loginForm')) {
         submitBtn.textContent = 'Logging in...';
         
         try {
-            // Call login API
             const response = await fetch(LOGIN_URL, {
                 method: 'POST',
                 headers: {
@@ -30,49 +29,28 @@ if (document.getElementById('loginForm')) {
             });
             
             if (!response.ok) {
-                const text = await response.text();
-                throw new Error(`Login failed: ${response.status} ${text}`);
+                throw new Error(`Login failed: ${response.status}`);
             }
             
             const data = await response.json();
-            
-            // Debug: Log the response to see the structure
-            console.log('=== LOGIN RESPONSE ===');
-            console.log('Full response:', data);
-            console.log('Keys in response:', Object.keys(data));
-            console.log('Data object:', data.data);
-            console.log('Keys in data.data:', data.data ? Object.keys(data.data) : 'N/A');
-            console.log('Auth object:', data.data?.auth);
-            console.log('Keys in auth:', data.data?.auth ? Object.keys(data.data.auth) : 'N/A');
-            console.log('=====================');
-            
-            // Extract from data.data object
             const responseData = data.data || data;
-            const token = responseData.token || responseData.accessToken || responseData.jwtToken || data.token;
-            
-            // AuthId is inside the auth object
+            const token = responseData.token || data.token;
             const authObject = responseData.auth || {};
-            const authId = authObject._id || authObject.id || authObject.authId || 
-                          responseData.authId || responseData.userId || responseData._id || responseData.id;
-            
-            console.log('Extracted token:', token);
-            console.log('Extracted authId:', authId);
+            const authId = authObject._id || authObject.id || authObject.authId || responseData.authId || responseData._id;
             
             if (!token || !authId) {
-                alert('ERROR: Could not extract token or authId from login response. Check console for details.');
-                return; // Don't redirect, stay on page
+                alert('ERROR: Could not extract credentials from login response.');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Continue';
+                return;
             }
             
-            // Store auth data (token and authId)
             sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
                 token: token,
                 authId: authId,
                 email: email
             }));
             
-            console.log('Stored in sessionStorage:', sessionStorage.getItem(STORAGE_KEY));
-            
-            // Redirect to delete page
             window.location.href = 'delete.html';
             
         } catch (error) {
@@ -90,58 +68,54 @@ if (document.getElementById('deleteBtn')) {
     const messageDiv = document.getElementById('message');
     
     deleteBtn.addEventListener('click', async () => {
-        // Get stored auth data
         const authData = sessionStorage.getItem(STORAGE_KEY);
         
-        console.log('Raw authData from sessionStorage:', authData);
-        
         if (!authData) {
-            showMessage('No login credentials found. Please login first.', 'error');
-            console.error('No authData in sessionStorage');
+            messageDiv.textContent = 'No login credentials found. Please login first.';
+            messageDiv.className = 'message error';
             setTimeout(() => {
                 window.location.href = 'login.html';
             }, 2000);
             return;
         }
         
-        const { token, authId, email } = JSON.parse(authData);
+        const { email } = JSON.parse(authData);
         
-        console.log('Parsed authData:', { token, authId, email });
-        console.log('Token exists:', !!token, 'AuthId exists:', !!authId);
-        
-        if (!token || !authId) {
-            showMessage('Invalid authentication data. Please login again.', 'error');
-            console.error('Missing token or authId:', { token: !!token, authId });
-            // Don't redirect immediately - keep it on page so we can see console
-            return;
-        }
-        
-        // Confirm deletion
         if (!confirm(`Are you absolutely sure? This will permanently delete the account for ${email}.`)) {
             return;
         }
         
-        // Show loading state
+        // Ask for password
+        const password = prompt('Enter your password to confirm deletion:');
+        
+        console.log('Password prompt result:', password);
+        console.log('Email:', email);
+        
+        if (!password) {
+            messageDiv.textContent = 'Password is required to delete account';
+            messageDiv.className = 'message error';
+            return;
+        }
+        
         deleteBtn.disabled = true;
         deleteBtn.textContent = 'Deleting...';
-        showMessage('Processing your request...', 'loading');
+        messageDiv.textContent = 'Processing your request...';
+        messageDiv.className = 'message loading';
         
         try {
-            // Log the authId to verify it's correct
-            console.log('AuthId being used:', authId);
-            console.log('AuthId type:', typeof authId);
+            const requestBody = {
+                email: email,
+                password: password
+            };
             
-            // Make sure we're using the correct endpoint with authId in the URL
-            const deleteUrl = `${DELETE_URL}/${authId}`;
-            console.log('Making DELETE request to:', deleteUrl);
-            console.log('Using token:', token ? 'Token exists (first 10 chars): ' + token.substring(0, 10) + '...' : 'No token');
+            console.log('Sending DELETE request with body:', requestBody);
             
-            const response = await fetch(deleteUrl, {
+            const response = await fetch(DELETE_URL, {
                 method: 'DELETE',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                }
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
             });
             
             console.log('Response status:', response.status);
@@ -149,16 +123,16 @@ if (document.getElementById('deleteBtn')) {
             console.log('Response text:', responseText);
             
             if (!response.ok) {
-                throw new Error(`Error: ${response.status} ${response.statusText}\n${responseText}`);
+                throw new Error(`${response.status}: ${responseText}`);
             }
             
-            const data = await response.json();
+            const data = JSON.parse(responseText);
             
-            if (data.success || data.status === 'success') {
-                showMessage('Account deleted successfully!', 'success');
+            if (data.status === 'success') {
+                messageDiv.textContent = 'Account deleted successfully!';
+                messageDiv.className = 'message success';
                 sessionStorage.removeItem(STORAGE_KEY);
                 
-                // Redirect to login after 3 seconds
                 setTimeout(() => {
                     window.location.href = 'login.html';
                 }, 3000);
@@ -166,15 +140,11 @@ if (document.getElementById('deleteBtn')) {
                 throw new Error(data.message || 'Failed to delete account');
             }
         } catch (error) {
-            console.error(error);
-            showMessage(`Error: ${error.message}`, 'error');
+            console.error('Delete error:', error);
+            messageDiv.textContent = `Error: ${error.message}`;
+            messageDiv.className = 'message error';
             deleteBtn.disabled = false;
             deleteBtn.textContent = 'Delete Account';
         }
     });
-    
-    function showMessage(text, type) {
-        messageDiv.textContent = text;
-        messageDiv.className = `message ${type}`;
-    }
 }
